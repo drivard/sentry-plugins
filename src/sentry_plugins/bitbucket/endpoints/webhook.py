@@ -22,8 +22,11 @@ logger = logging.getLogger('sentry.webhooks')
 
 # Bitbucket Cloud IP range:
 # https://confluence.atlassian.com/bitbucket/manage-webhooks-735643732.html#Managewebhooks-trigger_webhookTriggeringwebhooks
-BITBUCKET_IP_RANGE = ipaddress.ip_network(u'104.192.136.0/21')
-
+BITBUCKET_IP_RANGE = [
+    ipaddress.ip_network(u'104.192.136.0/21'),
+    ipaddress.ip_network(u'34.198.203.127/32'),
+    ipaddress.ip_network(u'34.198.178.64/32'),
+    ipaddress.ip_network(u'34.198.32.85/32')]
 
 class Webhook(object):
     def __call__(self, organization, event):
@@ -103,6 +106,12 @@ class BitbucketWebhookEndpoint(View):
         'repo:push': PushEventWebhook,
     }
 
+    def is_whitelisted(self, remote_ip):
+        for ip_range in BITBUCKET_IP_RANGE:
+            if ipaddress.ip_address(six.text_type(remote_ip)) in ip_range:
+                return True
+        return False
+
     def get_handler(self, event_type):
         return self._handlers.get(event_type)
 
@@ -149,8 +158,7 @@ class BitbucketWebhookEndpoint(View):
         if not handler:
             return HttpResponse(status=204)
 
-        if not ipaddress.ip_address(six.text_type(request.META['REMOTE_ADDR'])
-                                    ) in BITBUCKET_IP_RANGE:
+        if not self.is_whitelisted(six.text_type(request.META['REMOTE_ADDR'])):
             logger.error(
                 'bitbucket.webhook.invalid-ip-range', extra={
                     'organization_id': organization.id,
